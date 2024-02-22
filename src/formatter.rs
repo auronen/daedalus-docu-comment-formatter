@@ -1,14 +1,13 @@
-use std::process::exit;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{tag, take_until, take_while},
     character::complete::{
-        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, not_line_ending,
+        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, newline, not_line_ending
     },
     combinator::{opt, recognize},
     error::Error,
-    multi::{many0, many0_count, separated_list0},
-    sequence::{delimited, pair},
+    multi::{many0, many0_count, many1, separated_list0},
+    sequence::{delimited, pair, preceded},
     Finish, IResult,
 };
 
@@ -50,13 +49,9 @@ impl DocuComment {
 }
 
 fn parse_description(input: &str) -> IResult<&str, Option<String>> {
-    let (input, desc) = alt((take_until("///\n"), take_until("func")))(input)?;
-    // let desc = desc
-    //     .replace("/// ", "");
-    let desc = desc
-        .strip_prefix("///")
-        .expect("this string to start with ///")
-        .trim();
+    let (input, desc) = preceded(tag("///"), not_line_ending)(input)?;
+    let (input, _) = newline(input)?;
+    let desc = desc.trim();
     if desc.is_empty() {
         Ok((input, None))
     } else {
@@ -93,6 +88,7 @@ fn parse_func(input: &str) -> IResult<&str, String> {
 //     name.to_string()
 // }
 
+// super lazy here
 fn parse_function_signature(input: &str) -> (String, Vec<String>) {
     let (input, _) = identifier(input).unwrap();
     let (input, _) = multispace1::<&str, Error<_>>(input).unwrap();
@@ -107,8 +103,6 @@ fn parse_function_signature(input: &str) -> (String, Vec<String>) {
     )(input)
     .unwrap();
 
-    // println!("parms.len(): {}", params.len());
-    // println!("parms: {:#?}", params);
     let result_strings: Vec<String> = if params.len() == 1 && params[0].is_empty() {
         vec![]
     } else {
@@ -137,16 +131,13 @@ fn parse_return(input: &str) -> IResult<&str, String> {
 fn parse_doc_comment(input: &str) -> IResult<&str, DocuComment> {
     let (input, _) = opt(multispace0)(input)?;
     let (input, description) = parse_description(input)?;
-    let (input, _) = parse_empty_line(input)?;
+    let (input, _) = many1(parse_empty_line)(input)?;
     let (input, params) = many0(parse_param)(input)?;
     let (input, _) = multispace0(input)?;
     let (input, ret_stmt) = opt(parse_return)(input)?;
     let (input, func) = parse_func(input)?;
-    // let name = parse_func_name(&func.clone());
     let func_str = func.clone();
     let (name, parameters) = parse_function_signature(&func_str);
-    // println!("parameters: {:#?}", parameters);
-    // println!(" - params: {}\n - parameters: {}", params.len(), parameters.len());
 
     Ok((
         input,
