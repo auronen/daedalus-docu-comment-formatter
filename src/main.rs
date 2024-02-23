@@ -35,7 +35,6 @@ func void Doc_Show(var int docID) {};
 func int Doc_CreateMap() {};
 "#;
 
-
 fn main() {
     mount_to_body(|| view! {
         <h1>Daedalus docu comment formatter</h1>
@@ -73,4 +72,3 @@ fn App() -> impl IntoView {
         </button>
     }
 }
-

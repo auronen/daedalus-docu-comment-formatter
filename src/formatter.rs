@@ -1,13 +1,14 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until, take_while},
+    bytes::complete::{tag, take_until},
     character::complete::{
-        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, newline, not_line_ending
+        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1,
+        not_line_ending,
     },
     combinator::{opt, recognize},
     error::Error,
-    multi::{many0, many0_count, many1, separated_list0},
-    sequence::{delimited, pair, preceded},
+    multi::{many0, many0_count, separated_list0},
+    sequence::{delimited, pair},
     Finish, IResult,
 };
 
@@ -49,15 +50,28 @@ impl DocuComment {
 }
 
 fn parse_description(input: &str) -> IResult<&str, Option<String>> {
-    let (input, desc) = preceded(tag("///"), not_line_ending)(input)?;
-    let (input, _) = newline(input)?;
-    let desc = desc.trim();
+    let (input, desc) = alt((take_until("///\n"), take_until("func")))(input)?;
+    let desc = desc
+        .strip_prefix("///")
+        .expect("this string to start with ///")
+        .trim();
     if desc.is_empty() {
         Ok((input, None))
     } else {
         Ok((input, Some(desc.to_string())))
     }
 }
+
+// fn parse_description(input: &str) -> IResult<&str, Option<String>> {
+//     let (input, desc) = preceded(tag("///"), not_line_ending)(input)?;
+//     let (input, _) = newline(input)?;
+//     let desc = desc.trim();
+//     if desc.is_empty() {
+//         Ok((input, None))
+//     } else {
+//         Ok((input, Some(desc.to_string())))
+//     }
+// }
 
 fn parse_empty_line(input: &str) -> IResult<&str, ()> {
     let (input, _) = tag("///")(input)?;
@@ -131,7 +145,7 @@ fn parse_return(input: &str) -> IResult<&str, String> {
 fn parse_doc_comment(input: &str) -> IResult<&str, DocuComment> {
     let (input, _) = opt(multispace0)(input)?;
     let (input, description) = parse_description(input)?;
-    let (input, _) = many1(parse_empty_line)(input)?;
+    let (input, _) = parse_empty_line(input)?;
     let (input, params) = many0(parse_param)(input)?;
     let (input, _) = multispace0(input)?;
     let (input, ret_stmt) = opt(parse_return)(input)?;
@@ -159,13 +173,13 @@ fn parse_doc_comments(input: &str) -> IResult<&str, Vec<DocuComment>> {
 pub fn parse(input: &str) -> Option<String> {
     match parse_doc_comments(input).finish() {
         Ok(dcs) => {
-            return Some(
+            Some(
                 dcs.1
                     .into_iter()
                     .map(|s| s.generate_md())
                     .collect::<Vec<String>>()
                     .join("\n"),
-            );
+            )
         }
         Err(e) => {
             eprintln!("Someting went wrong {:#?}", e);
