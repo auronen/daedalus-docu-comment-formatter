@@ -15,4 +15,4 @@ The format of the docu comment is as follows
 
 ## Issues
 If it does not work on GH pages: 
-> "It works on my machine. ¯\\_(ツ)_/¯"
+> "It works on my machine. ¯\\__(ツ)__/¯"

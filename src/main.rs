@@ -37,8 +37,8 @@ func int Doc_CreateMap() {};
 
 fn main() {
     mount_to_body(|| view! {
-        <h1>Daedalus docu comment formatter</h1>
-        <p>Yes it is not perfect, but it sort of work, ok?</p>
+        <h1>Daedalus docu-comment formatter (docu-comment to MD converter)</h1>
+        <p>Yes, it is not perfect, but it sort of works, ok?</p>
         <App/>
     })
 }
