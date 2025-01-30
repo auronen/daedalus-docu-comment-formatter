@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 pub mod formatter;
 
@@ -45,8 +45,8 @@ fn main() {
 
 #[component]
 fn App() -> impl IntoView {
-    let (input, _set_input) = create_signal(EXAMPLE_INPUT.to_string());
-    let (out, set_out) = create_signal("".to_string());
+    let (input, _set_input) = signal(EXAMPLE_INPUT.to_string());
+    let (out, set_out) = signal("".to_string());
 
     view! {
         <textarea

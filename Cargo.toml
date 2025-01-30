@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
-leptos = { version = "0.6.6", features = ["csr", "nightly"] }
+leptos = { version = "0.7", features = ["csr", "nightly"] }
 nom = "7.1.3"

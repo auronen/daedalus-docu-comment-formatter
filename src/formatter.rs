@@ -28,20 +28,20 @@ impl DocuComment {
         md.push_str(&format!("### `{}`\n", self.func_name));
         md.push_str(&format!("!!! function \"`{}`\"\n", self.func_name));
         if let Some(desc) = &self.description {
-            md.push_str(&format!("\t{}\n", desc));
+            md.push_str(&format!("    {}\n", desc));
         }
-        md.push_str(&format!("\t```dae\n\t{}\n\t```\n", self.func_string));
+        md.push_str(&format!("    ```dae\n    {}\n    ```\n", self.func_string));
         if let Some(params) = &self.param_desc {
             if !params.is_empty() {
-                md.push_str("\n\t**Parameters**  \n");
+                md.push_str("\n    **Parameters**  \n\n");
             }
             for (i, p) in params.iter().enumerate() {
-                md.push_str(&format!("\t- `#!dae {}` - {}\n", self.parameters[i], p.1))
+                md.push_str(&format!("    - `#!dae {}` - {}\n", self.parameters[i], p.1))
             }
         }
         if let Some(ret) = &self.ret_stmt {
-            md.push_str("\n\t**Return value**  \n");
-            md.push_str(&format!("\t{}\n", ret));
+            md.push_str("\n    **Return value**  \n");
+            md.push_str(&format!("    The function returns {}\n", ret));
         }
         // md.push_str(&format!("\n"));
         // "".to_string()
