@@ -3,6 +3,14 @@ use leptos::prelude::*;
 pub mod formatter;
 
 const EXAMPLE_INPUT: &str = r#"
+/// Display the number above NPC
+///
+/// @global self set to npc target is looking at
+/// @param npc target NPC
+/// @param number number to display
+/// @return TRUE if the number was displayed, FALSE otherwise
+func int Gmc_Example(var C_NPC npc, var int number) {};
+
 /// Sets up the visual of an NPC
 ///
 /// @param npc NPC to be affected
@@ -36,10 +44,12 @@ func int Doc_CreateMap() {};
 "#;
 
 fn main() {
-    mount_to_body(|| view! {
-        <h1>Daedalus docu-comment formatter (docu-comment to MD converter)</h1>
-        <p>Yes, it is not perfect, but it sort of works, ok?</p>
-        <App/>
+    mount_to_body(|| {
+        view! {
+            <h1>Daedalus docu-comment formatter (docu-comment to MD converter)</h1>
+            <p>Yes, it is not perfect, but it sort of works, I guess?</p>
+            <App/>
+        }
     })
 }
 

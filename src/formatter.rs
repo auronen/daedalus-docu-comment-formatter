@@ -2,54 +2,132 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
     character::complete::{
-        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1,
-        not_line_ending,
+        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, newline,
+        not_line_ending, space0,
     },
     combinator::{opt, recognize},
     error::Error,
     multi::{many0, many0_count, separated_list0},
-    sequence::{delimited, pair},
+    sequence::{delimited, pair, terminated},
     Finish, IResult,
 };
 
 #[derive(Debug)]
-struct DocuComment {
-    description: Option<String>,
-    param_desc: Option<Vec<(String, String)>>,
-    parameters: Vec<String>,
-    ret_stmt: Option<String>,
-    func_string: String,
-    func_name: String,
+struct DocuComment<'a> {
+    description: Option<&'a str>,
+    infos: Vec<DocuInfo<'a>>,
+    func_string: &'a str,
+    func_name: &'a str,
 }
 
-impl DocuComment {
+#[derive(Debug)]
+enum DocuInfo<'a> {
+    Parameter(&'a str, &'a str),
+    Global(&'a str, &'a str),
+    Return(&'a str),
+}
+
+fn parse_infos(input: &str) -> IResult<&str, Vec<DocuInfo>> {
+    many0(terminated(parse_docu_info, newline))(input)
+}
+
+fn parse_docu_info(input: &str) -> IResult<&str, DocuInfo> {
+    delimited(
+        opt(parse_empty_line),
+        alt((parse_param, parse_global, parse_return)),
+        opt(parse_empty_line),
+    )(input)
+}
+
+fn parse_param(input: &str) -> IResult<&str, DocuInfo> {
+    let (input, _) = tag("///")(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("@param")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, param_name) = take_until(" ")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, description) = not_line_ending(input)?;
+    Ok((input, DocuInfo::Parameter(param_name, description)))
+}
+
+fn parse_global(input: &str) -> IResult<&str, DocuInfo> {
+    let (input, _) = tag("///")(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("@global")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, global_name) = take_until(" ")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, description) = not_line_ending(input)?;
+    Ok((input, DocuInfo::Global(global_name, description)))
+}
+
+fn parse_return(input: &str) -> IResult<&str, DocuInfo> {
+    let (input, _) = tag("///")(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("@return")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, description) = not_line_ending(input)?;
+    Ok((input, DocuInfo::Return(description)))
+}
+
+impl<'a> DocuComment<'a> {
     pub fn generate_md(&self) -> String {
-        let mut md = String::with_capacity(50);
+        let mut md = String::with_capacity(150);
         md.push_str(&format!("### `{}`\n", self.func_name));
         md.push_str(&format!("!!! function \"`{}`\"\n", self.func_name));
         if let Some(desc) = &self.description {
             md.push_str(&format!("    {}\n", desc));
         }
         md.push_str(&format!("    ```dae\n    {}\n    ```\n", self.func_string));
-        if let Some(params) = &self.param_desc {
-            if !params.is_empty() {
-                md.push_str("\n    **Parameters**  \n\n");
-            }
-            for (i, p) in params.iter().enumerate() {
-                md.push_str(&format!("    - `#!dae {}` - {}\n", self.parameters[i], p.1))
-            }
+        if self.has_params() {
+            md.push_str("\n    **Parameters**  \n\n");
+            self.infos.iter().for_each(|info| {
+                if let DocuInfo::Parameter(name, desc) = info {
+                    md.push_str(&format!("    - `#!dae {}` - {}\n", name, desc))
+                }
+            });
         }
-        if let Some(ret) = &self.ret_stmt {
+        if self.has_globals() {
+            md.push_str("\n    **Globals**  \n\n");
+            self.infos.iter().for_each(|info| {
+                if let DocuInfo::Global(name, desc) = info {
+                    md.push_str(&format!("    - `#!dae {}` - {}\n", name, desc))
+                }
+            });
+        }
+
+        if self.has_return() {
             md.push_str("\n    **Return value**  \n");
-            md.push_str(&format!("    The function returns {}\n", ret));
+            for info in &self.infos {
+                if let DocuInfo::Return(desc) = info {
+                    md.push_str(&format!("    The function returns {}\n", desc));
+                    break;
+                }
+            }
         }
-        // md.push_str(&format!("\n"));
-        // "".to_string()
         md
+    }
+
+    fn has_params(&self) -> bool {
+        self.infos
+            .iter()
+            .any(|info| matches!(info, DocuInfo::Parameter(..)))
+    }
+
+    fn has_globals(&self) -> bool {
+        self.infos
+            .iter()
+            .any(|info| matches!(info, DocuInfo::Global(..)))
+    }
+
+    fn has_return(&self) -> bool {
+        self.infos
+            .iter()
+            .any(|info| matches!(info, DocuInfo::Return(..)))
     }
 }
 
-fn parse_description(input: &str) -> IResult<&str, Option<String>> {
+fn parse_description(input: &str) -> IResult<&str, Option<&str>> {
     let (input, desc) = alt((take_until("///\n"), take_until("func")))(input)?;
     let desc = desc
         .strip_prefix("///")
@@ -58,25 +136,14 @@ fn parse_description(input: &str) -> IResult<&str, Option<String>> {
     if desc.is_empty() {
         Ok((input, None))
     } else {
-        Ok((input, Some(desc.to_string())))
+        Ok((input, Some(desc)))
     }
 }
 
-// fn parse_description(input: &str) -> IResult<&str, Option<String>> {
-//     let (input, desc) = preceded(tag("///"), not_line_ending)(input)?;
-//     let (input, _) = newline(input)?;
-//     let desc = desc.trim();
-//     if desc.is_empty() {
-//         Ok((input, None))
-//     } else {
-//         Ok((input, Some(desc.to_string())))
-//     }
-// }
-
 fn parse_empty_line(input: &str) -> IResult<&str, ()> {
     let (input, _) = tag("///")(input)?;
-    let (input, _) = multispace0(input)?;
-
+    let (input, _) = space0(input)?;
+    let (input, _) = line_ending(input)?;
     Ok((input, ()))
 }
 
@@ -87,23 +154,16 @@ fn identifier(input: &str) -> IResult<&str, &str> {
     ))(input)
 }
 
-fn parse_func(input: &str) -> IResult<&str, String> {
+fn parse_func(input: &str) -> IResult<&str, &str> {
     let (input, func) = take_until("{};")(input)?;
     let (input, _) = tag("{};")(input)?;
-    Ok((input, format!("{} {{}};", func)))
+    // Ok((input, format!("{} {{}};", func)))
+    Ok((input, func))
 }
 
-// fn parse_func_name(input: &str) -> String {
-//     let (input, _) = identifier(input).unwrap();
-//     let (input, _) = multispace1::<&str, Error<_>>(input).unwrap();
-//     let (input, _) = identifier(input).unwrap();
-//     let (input, _) = multispace1::<&str, Error<_>>(input).unwrap();
-//     let (_, name) = identifier(input).unwrap();
-//     name.to_string()
-// }
 
 // super lazy here
-fn parse_function_signature(input: &str) -> (String, Vec<String>) {
+fn parse_function_signature(input: &str) -> (&str, Vec<&str>) {
     let (input, _) = identifier(input).unwrap();
     let (input, _) = multispace1::<&str, Error<_>>(input).unwrap();
     let (input, _) = identifier(input).unwrap();
@@ -117,51 +177,31 @@ fn parse_function_signature(input: &str) -> (String, Vec<String>) {
     )(input)
     .unwrap();
 
-    let result_strings: Vec<String> = if params.len() == 1 && params[0].is_empty() {
+    let result_strings: Vec<&str> = if params.len() == 1 && params[0].is_empty() {
         vec![]
     } else {
-        params.iter().map(|s| s.trim().to_string()).collect()
+        params.iter().map(|s| s.trim()).collect()
     };
 
-    (name.to_string(), result_strings)
-}
-
-fn parse_param(input: &str) -> IResult<&str, (String, String)> {
-    let (input, _) = tag("/// @param ")(input)?;
-    let (input, name) = identifier(input)?;
-    let (input, _) = multispace1(input)?;
-    let (input, value) = not_line_ending(input)?;
-    let (input, _) = line_ending(input)?;
-    Ok((input, (name.to_string(), value.trim().to_string())))
-}
-
-fn parse_return(input: &str) -> IResult<&str, String> {
-    let (input, _) = tag("/// @return ")(input)?;
-    let (input, ret) = not_line_ending(input)?;
-    let (input, _) = line_ending(input)?;
-    Ok((input, ret.trim().to_string()))
+    (name, result_strings)
 }
 
 fn parse_doc_comment(input: &str) -> IResult<&str, DocuComment> {
     let (input, _) = opt(multispace0)(input)?;
     let (input, description) = parse_description(input)?;
-    let (input, _) = parse_empty_line(input)?;
-    let (input, params) = many0(parse_param)(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, ret_stmt) = opt(parse_return)(input)?;
+    let (input, _) = many0(parse_empty_line)(input)?;
+    let (input, infos) = parse_infos(input)?;
     let (input, func) = parse_func(input)?;
-    let func_str = func.clone();
-    let (name, parameters) = parse_function_signature(&func_str);
+    let func_str = func;
+    let (name, _parameters) = parse_function_signature(&func_str);
 
     Ok((
         input,
         DocuComment {
             description,
-            param_desc: Some(params),
-            parameters,
-            ret_stmt,
+            infos,
             func_string: func,
-            func_name: name.to_string(),
+            func_name: name,
         },
     ))
 }
@@ -172,15 +212,13 @@ fn parse_doc_comments(input: &str) -> IResult<&str, Vec<DocuComment>> {
 
 pub fn parse(input: &str) -> Option<String> {
     match parse_doc_comments(input).finish() {
-        Ok(dcs) => {
-            Some(
-                dcs.1
-                    .into_iter()
-                    .map(|s| s.generate_md())
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-            )
-        }
+        Ok(dcs) => Some(
+            dcs.1
+                .into_iter()
+                .map(|s| s.generate_md())
+                .collect::<Vec<String>>()
+                .join("\n"),
+        ),
         Err(e) => {
             eprintln!("Someting went wrong {:#?}", e);
             None
